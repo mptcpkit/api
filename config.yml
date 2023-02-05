@@ -4,6 +4,6 @@ server:
   https: false
 
 api:
-  script_dir: "/Users/pooh/projects/mptcpkit-api/endpoints"
-  key_file: "/Users/pooh/projects/mptcpkit-api/keys.yml"
+  script_dir: "/etc/mptcpkit/endpoints"
+  key_file: "/etc/mptcpkit/keys.yml"
   dry: true
