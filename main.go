@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"log/syslog"
 	"net/http"
 	"os"
+	"time"
 
-	"github.com/heartwilltell/log"
 	"gopkg.in/yaml.v2"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -14,7 +15,92 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pjebs/restgate"
+
+	log "github.com/inconshreveable/log15"
 )
+
+// StatusCodeColor is the ANSI color for appropriately logging http status code to a terminal.
+func StatusCodeLogLevel(p *gin.LogFormatterParams) log.Lvl {
+	code := p.StatusCode
+
+	switch {
+	case code >= http.StatusOK && code < http.StatusMultipleChoices:
+		return log.LvlInfo
+	case code >= http.StatusMultipleChoices && code < http.StatusInternalServerError:
+		return log.LvlWarn
+	default:
+		return log.LvlError
+	}
+}
+
+// LoggerWithConfig instance a Logger middleware with config.
+func LoggerWithConfig(logger log.Logger) gin.HandlerFunc {
+
+	// defaultLogFormatter is the default log format function Logger middleware uses.
+	var defaultLogFormatter = func(param gin.LogFormatterParams) string {
+		var statusColor, methodColor, resetColor string
+		if param.IsOutputColor() {
+			statusColor = param.StatusCodeColor()
+			methodColor = param.MethodColor()
+			resetColor = param.ResetColor()
+		}
+
+		if param.Latency > time.Minute {
+			param.Latency = param.Latency.Truncate(time.Second)
+		}
+
+		return fmt.Sprintf("%sSTATUS: %3d %s| %13v | %15s |%s %-7s %s %#v\n %s",
+			statusColor, param.StatusCode, resetColor,
+			param.Latency,
+			param.ClientIP,
+			methodColor, param.Method, resetColor,
+			param.Path,
+			param.ErrorMessage,
+		)
+	}
+
+	return func(c *gin.Context) {
+		// Start timer
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		// Process request
+		c.Next()
+
+		// Log only when path is not being skipped
+		param := gin.LogFormatterParams{
+			Request: c.Request,
+			Keys:    c.Keys,
+		}
+
+		// Stop timer
+		param.TimeStamp = time.Now()
+		param.Latency = param.TimeStamp.Sub(start)
+
+		param.ClientIP = c.ClientIP()
+		param.Method = c.Request.Method
+		param.StatusCode = c.Writer.Status()
+		param.ErrorMessage = c.Errors.ByType(gin.ErrorTypePrivate).String()
+
+		param.BodySize = c.Writer.Size()
+
+		if raw != "" {
+			path = path + "?" + raw
+		}
+
+		param.Path = path
+		switch StatusCodeLogLevel(&param) {
+		case log.LvlInfo:
+			logger.Info(defaultLogFormatter(param))
+		case log.LvlError:
+			logger.Error(defaultLogFormatter(param))
+		case log.LvlWarn:
+			logger.Error(defaultLogFormatter(param))
+		}
+
+	}
+}
 
 func main() {
 	var cfg api.Configuration
@@ -30,7 +116,26 @@ func main() {
 	}
 
 	logger := log.New()
-	r := gin.Default()
+	if syslog, err := log.SyslogHandler(syslog.LOG_DAEMON, "mptcpkit-api", log.TerminalFormat()); err != nil {
+		logger.SetHandler(log.MultiHandler(
+			log.StdoutHandler,
+			log.LvlFilterHandler(
+				log.LvlError,
+				log.Must.FileHandler(cfg.Server.LogFile, log.TerminalFormat()),
+			)))
+	} else {
+		logger.SetHandler(log.MultiHandler(
+			log.StdoutHandler,
+			log.LvlFilterHandler(
+				log.LvlError,
+				log.Must.FileHandler(cfg.Server.LogFile, log.TerminalFormat()),
+			),
+			syslog,
+		))
+	}
+
+	r := gin.New()
+	r.Use(LoggerWithConfig(logger), gin.Recovery())
 	sec := secure.New()
 	secFunc := func() gin.HandlerFunc {
 		return func(c *gin.Context) {
@@ -84,12 +189,12 @@ func main() {
 			"message": "pong",
 		})
 	})
-	logger.Info("Binding to %s:%s", cfg.Server.Host, cfg.Server.Port)
+	logger.Info(fmt.Sprintf("Binding %s:%s", cfg.Server.Host, cfg.Server.Port))
 	if cfg.Server.Https {
 		logger.Info("HTTPs: true")
 		r.RunTLS(fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port), cfg.Server.TLSCertFile, cfg.Server.TLSCertKey)
 	} else {
-		logger.Warning("HTTPs: false")
+		logger.Warn("HTTPs: false")
 		r.Run(fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)) // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 	}
 }

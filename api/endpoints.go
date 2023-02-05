@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/heartwilltell/log"
+	log "github.com/inconshreveable/log15"
 	"gopkg.in/yaml.v3"
 
 	"github.com/gin-gonic/gin"
