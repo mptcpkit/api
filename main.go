@@ -84,9 +84,12 @@ func main() {
 			"message": "pong",
 		})
 	})
+	logger.Info("Binding to %s:%s", cfg.Server.Host, cfg.Server.Port)
 	if cfg.Server.Https {
+		logger.Info("HTTPs: true")
 		r.RunTLS(fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port), cfg.Server.TLSCertFile, cfg.Server.TLSCertKey)
 	} else {
+		logger.Warning("HTTPs: false")
 		r.Run(fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)) // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 	}
 }

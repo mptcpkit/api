@@ -30,7 +30,7 @@ type Args struct {
 func ProcessArgs(cfg interface{}) Args {
 	var a Args
 	f := flag.NewFlagSet("Mptcpkit API", 1)
-	f.StringVar(&a.ConfigPath, "c", "config.yml", "Path to the config file")
+	f.StringVar(&a.ConfigPath, "c", "/etc/mptcpkit/config.yml", "Path to the config file")
 
 	fu := f.Usage
 	f.Usage = func() {
