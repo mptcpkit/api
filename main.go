@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/mattn/go-isatty"
 	"github.com/tompinn23/mptcpkit/api"
 	"github.com/unrolled/secure"
 
@@ -37,9 +38,9 @@ func StatusCodeLogLevel(p *gin.LogFormatterParams) log.Lvl {
 func LoggerWithConfig(logger log.Logger) gin.HandlerFunc {
 
 	// defaultLogFormatter is the default log format function Logger middleware uses.
-	var defaultLogFormatter = func(param gin.LogFormatterParams) string {
+	var defaultLogFormatter = func(isTerm bool, param gin.LogFormatterParams) string {
 		var statusColor, methodColor, resetColor string
-		if param.IsOutputColor() {
+		if isTerm {
 			statusColor = param.StatusCodeColor()
 			methodColor = param.MethodColor()
 			resetColor = param.ResetColor()
@@ -49,7 +50,7 @@ func LoggerWithConfig(logger log.Logger) gin.HandlerFunc {
 			param.Latency = param.Latency.Truncate(time.Second)
 		}
 
-		return fmt.Sprintf("%sSTATUS: %3d %s| %13v | %15s |%s %-7s %s %#v\n %s",
+		return fmt.Sprintf("%s %3d %s| %13v | %15s |%s %-7s %s %#v\n %s",
 			statusColor, param.StatusCode, resetColor,
 			param.Latency,
 			param.ClientIP,
@@ -57,6 +58,15 @@ func LoggerWithConfig(logger log.Logger) gin.HandlerFunc {
 			param.Path,
 			param.ErrorMessage,
 		)
+	}
+
+	isTerm := true
+
+	out := gin.DefaultWriter
+
+	if w, ok := out.(*os.File); !ok || os.Getenv("TERM") == "dumb" ||
+		(!isatty.IsTerminal(w.Fd()) && !isatty.IsCygwinTerminal(w.Fd())) {
+		isTerm = false
 	}
 
 	return func(c *gin.Context) {
@@ -92,11 +102,14 @@ func LoggerWithConfig(logger log.Logger) gin.HandlerFunc {
 		param.Path = path
 		switch StatusCodeLogLevel(&param) {
 		case log.LvlInfo:
-			logger.Info(defaultLogFormatter(param))
+			fmt.Println(defaultLogFormatter(isTerm, param))
+			logger.Info(defaultLogFormatter(false, param))
 		case log.LvlError:
-			logger.Error(defaultLogFormatter(param))
+			fmt.Println(defaultLogFormatter(isTerm, param))
+			logger.Error(defaultLogFormatter(false, param))
 		case log.LvlWarn:
-			logger.Error(defaultLogFormatter(param))
+			fmt.Println(defaultLogFormatter(isTerm, param))
+			logger.Error(defaultLogFormatter(false, param))
 		}
 
 	}
@@ -116,19 +129,18 @@ func main() {
 	}
 
 	logger := log.New()
-	if syslog, err := log.SyslogHandler(syslog.LOG_DAEMON, "mptcpkit-api", log.TerminalFormat()); err != nil {
+	if syslog, err := log.SyslogHandler(syslog.LOG_DAEMON, "mptcpkit-api", log.LogfmtFormat()); err != nil {
 		logger.SetHandler(log.MultiHandler(
-			log.StdoutHandler,
 			log.LvlFilterHandler(
 				log.LvlError,
-				log.Must.FileHandler(cfg.Server.LogFile, log.TerminalFormat()),
+				log.Must.FileHandler(cfg.Server.LogFile, log.LogfmtFormat()),
 			)))
 	} else {
 		logger.SetHandler(log.MultiHandler(
 			log.StdoutHandler,
 			log.LvlFilterHandler(
 				log.LvlError,
-				log.Must.FileHandler(cfg.Server.LogFile, log.TerminalFormat()),
+				log.Must.FileHandler(cfg.Server.LogFile, log.LogfmtFormat()),
 			),
 			syslog,
 		))
