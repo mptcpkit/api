@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log/syslog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -31,6 +33,30 @@ func StatusCodeLogLevel(p *gin.LogFormatterParams) log.Lvl {
 		return log.LvlWarn
 	default:
 		return log.LvlError
+	}
+}
+
+func stdoutLog(lv log.Lvl, msg string) {
+	var color = 0
+	switch lv {
+	case log.LvlCrit:
+		color = 35
+	case log.LvlError:
+		color = 31
+	case log.LvlWarn:
+		color = 33
+	case log.LvlInfo:
+		color = 32
+	case log.LvlDebug:
+		color = 36
+	}
+
+	b := &bytes.Buffer{}
+	lvl := strings.ToUpper(lv.String())
+	if color > 0 {
+		fmt.Fprintf(b, "\x1b[%dm%s\x1b[0m[%s] %s ", color, lvl, time.Now().Format("01-02|15:04:05"), msg)
+	} else {
+		fmt.Fprintf(b, "[%s] [%s] %s ", lvl, time.Now().Format("01-02|15:04:05"), msg)
 	}
 }
 
@@ -100,15 +126,14 @@ func LoggerWithConfig(logger log.Logger) gin.HandlerFunc {
 		}
 
 		param.Path = path
-		switch StatusCodeLogLevel(&param) {
+		lv := StatusCodeLogLevel(&param)
+		stdoutLog(lv, defaultLogFormatter(isTerm, param))
+		switch lv {
 		case log.LvlInfo:
-			fmt.Println(defaultLogFormatter(isTerm, param))
 			logger.Info(defaultLogFormatter(false, param))
 		case log.LvlError:
-			fmt.Println(defaultLogFormatter(isTerm, param))
 			logger.Error(defaultLogFormatter(false, param))
 		case log.LvlWarn:
-			fmt.Println(defaultLogFormatter(isTerm, param))
 			logger.Error(defaultLogFormatter(false, param))
 		}
 
