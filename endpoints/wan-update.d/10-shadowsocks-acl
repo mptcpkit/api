@@ -1,0 +1,16 @@
+#!/bin/sh -e
+
+set -f
+
+file="/etc/shadowsocks-libev/local.acl"
+
+echo "Updating shadowsocks acl"
+
+echo "[white_list]" > "$file"
+IFS=" "
+# shellcheck disable=2086
+set -- $1
+printf '%s\n' "$@" >> "$file"
+
+
+exit 0

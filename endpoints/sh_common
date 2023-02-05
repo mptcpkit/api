@@ -1,0 +1,11 @@
+#!/bin/sh
+
+
+run_cmd() {
+  echo "Run COMMAND"
+  if [ "$MPTCPKIT_DRYRUN" = 1 ]; then
+    echo "$@"
+  else
+    "$@"
+  fi
+}

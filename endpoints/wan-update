@@ -1,0 +1,15 @@
+#!/bin/sh -e
+
+# THIS script will be called with a space seperated list
+# of WAN ips reported by the router.
+# ex. 127.0.0.5 10.92.16.1
+# any error will be propogated to the API as an HTTP 500 (Internal Server Error)
+# keep the script quick!
+# on success standard output will be sent as a response
+
+
+WAN_IPS="$1"
+export WAN_IPS
+
+"$SCRIPT_DIR/run-parts" --collect --collect-file="$COLLECT_FILE" --arg="$1" "$SCRIPT_DIR/wan-update.d" &
+exit 0

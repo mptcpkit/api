@@ -1,0 +1,87 @@
+#!/bin/sh
+
+args=
+collect=0
+collect_file=
+while :; do
+  case $1 in
+    -h|-\?|--help)
+      show_help
+      exit 0
+      ;;
+    -c|--collect)
+      collect=1
+      ;;
+    -a|--arg)
+      if [ -n "$2" ]; then
+        args="${args} $2"
+        shift
+      else
+        printf 'ERR: "--arg" requires an argument\n' >&2
+        exit 1
+      fi
+      ;;
+    --arg=?*)
+      args="${args} ${1#*=}" # Delete everything up to "=" and assign the remainder.
+      ;;
+    --arg=)         # Handle the case of an empty --file=
+      printf 'ERROR: "--arg" requires a non-empty option argument.\n' >&2
+      exit 1
+      ;;
+    -f|--collect-file)
+      if [ -n "$2" ]; then
+        collect_file="$2"
+        shift
+      else
+        printf 'ERR: "--collect-file" requires an argument\n' >&2
+        exit 1
+      fi
+      ;;
+    --collect-file=?*)
+      collect_file="${1#*=}" # Delete everything up to "=" and assign the remainder.
+      ;;
+    --collect-file=)         # Handle the case of an empty --file=
+      printf 'ERROR: "--collect-file" requires a non-empty option argument.\n' >&2
+      exit 1
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*)
+      printf 'WARN: unknown option (ignored): %s\n' "$1" >&2
+      ;;
+    *)
+    break
+  esac
+  shift
+done
+
+if [ -z "$collect_file" ]; then
+  collect_file="/tmp/run-parts.$$"
+fi
+
+dir="$1"
+# Ignore *~ and *, scripts
+filelist=$(LC_ALL=C; ls -1 "${dir}" | grep -vEe '[~,]$')
+
+echo "$filelist" | while read bname ; do
+    fpath="${dir%/}/${bname}"
+    [ -d "${fpath}" ] && continue
+    # Don't run *.{disabled,rpmsave,rpmorig,rpmnew,swp,cfsaved} scripts
+    [ "${bname%.disabled}" != "${bname}" ] && continue
+    [ "${bname%.cfsaved}" != "${bname}" ] && continue
+    [ "${bname%.rpmsave}" != "${bname}" ] && continue
+    [ "${bname%.rpmorig}" != "${bname}" ] && continue
+    [ "${bname%.rpmnew}" != "${bname}" ] && continue
+    [ "${bname%.swp}" != "${bname}" ] && continue
+    [ "${bname%,v}" != "${bname}" ] && continue
+
+  if [ $collect ]; then    
+    echo "## RUN ${bname} ##" >> "$collect_file"
+    out=$("${fpath}" "${args}") 2>>"$collect_file"
+    echo "${out}" >> "$collect_file"
+  else
+    "${fpath}" "${args}"
+  fi
+done
